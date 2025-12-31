@@ -62,16 +62,16 @@ jobs:
           REAL_ID=$(grep -RhoP 'DEVICE_buffalo_wxr[-_]6000ax12s' target/linux/qualcommax/image/ | head -n1)
           
           if [ -z "$REAL_ID" ]; then
-            echo "⚠️ Không tìm thấy symbol WXR-6000AX12S, fallback sang WXR-5950AX12"
-            REAL_ID_SAFE="DEVICE_buffalo_wxr_5950ax12"
+             echo "⚠️ Không tìm thấy symbol WXR-6000AX12S, fallback sang WXR-5950AX12"
+             REAL_ID_SAFE="DEVICE_buffalo_wxr_5950ax12"
           else
-            REAL_ID_SAFE=$(echo "$REAL_ID" | tr '-' '_')
-            echo "✅ Symbol được chọn: $REAL_ID_SAFE"
+             REAL_ID_SAFE=$(echo "$REAL_ID" | tr '-' '_')
+             echo "✅ Symbol được chọn: $REAL_ID_SAFE"
           fi
 
           echo "CONFIG_TARGET_qualcommax_ipq807x_${REAL_ID_SAFE}=y" >> .config
 
-          # --- FIX: Thụt lề thẳng hàng với các lệnh echo bên trên ---
+          # --- SỬA LỖI Ở ĐÂY: Thụt lề toàn bộ nội dung config vào trong ---
           cat >> .config <<'EOF'
           CONFIG_TARGET_ROOTFS_SQUASHFS=y
           CONFIG_IMAGE_METADATA=y
@@ -98,6 +98,7 @@ jobs:
           CONFIG_PACKAGE_htop=y
           EOF
 
+          # make defconfig sẽ tự động dọn dẹp khoảng trắng thừa nên bạn yên tâm
           make defconfig || (echo "⚠️ Defconfig warning ignored" && true)
 
       - name: 7️⃣ Download packages
