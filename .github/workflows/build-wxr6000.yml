@@ -1,4 +1,4 @@
-name: Build Buffalo WXR-6000AX12S (GOD TIER)
+name: Build Buffalo WXR-6000AX12S – NSS Build (FINAL VERSION)
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 600
+    timeout-minutes: 480
 
     steps:
       - name: Checkout code
@@ -41,8 +41,8 @@ jobs:
           path: |
             openwrt/dl
             openwrt/.ccache
-          key: buffalo-wxr6000-nss-god-${{ runner.os }}-${{ github.run_id }}
-          restore-keys: buffalo-wxr6000-nss-god-${{ runner.os }}-
+          key: buffalo-wxr6000-nss-final-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: buffalo-wxr6000-nss-final-${{ runner.os }}-
 
       - name: Update Feeds
         run: |
@@ -50,32 +50,34 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Configure .config (GOD Tier)
+      - name: Configure .config
         run: |
           cd openwrt
           rm -f .config
 
+          # Target cơ bản
           echo "CONFIG_TARGET_qualcommax=y" >> .config
           echo "CONFIG_TARGET_qualcommax_ipq807x=y" >> .config
 
-          # Auto detect WXR-6000AX12S symbol
+          # Quét symbol WXR-6000AX12S
           REAL_ID=$(grep -RhoP 'DEVICE_buffalo_wxr[-_]6000ax12s' target/linux/qualcommax/ | head -n1)
           if [ -z "$REAL_ID" ]; then
             echo "⚠️ Không tìm thấy symbol WXR-6000AX12S, fallback WXR-5950AX12"
             REAL_ID_SAFE=wxr_5950ax12
           else
             REAL_ID_SAFE=$(echo "$REAL_ID" | tr '-' '_')
-            echo "✅ Symbol xác định: $REAL_ID_SAFE"
+            echo "✅ Phát hiện symbol: $REAL_ID_SAFE"
           fi
+
           echo "CONFIG_TARGET_qualcommax_ipq807x_${REAL_ID_SAFE}=y" >> .config
 
-          # Thêm config core & NSS
+          # Thêm gói cơ bản & NSS
           cat >> .config <<'EOF'
 CONFIG_TARGET_ROOTFS_SQUASHFS=y
 CONFIG_IMAGE_METADATA=y
 CONFIG_CCACHE=y
 
-# NSS Full Stack + PPPoE + VLAN
+# NSS Acceleration Full Stack
 CONFIG_PACKAGE_kmod-qca-nss-drv=y
 CONFIG_PACKAGE_kmod-qca-nss-ecm=y
 CONFIG_PACKAGE_kmod-qca-nss-crypto=y
@@ -85,51 +87,53 @@ CONFIG_NSS_PPP_SUPPORT=y
 CONFIG_ECM_INTERFACE_PPP_ENABLE=y
 CONFIG_ECM_INTERFACE_VLAN_ENABLE=y
 
-# Drivers & networking
+# Drivers cơ bản
 CONFIG_PACKAGE_kmod-phy-aquantia=y
 CONFIG_PACKAGE_ath11k-firmware-ipq8074=y
-CONFIG_PACKAGE_ppp=y
-CONFIG_PACKAGE_kmod-ppp=y
 CONFIG_PACKAGE_ppp-mod-pppoe=y
-CONFIG_PACKAGE_ppp-mod-pppol2tp=y
 CONFIG_PACKAGE_kmod-8021q=y
 CONFIG_PACKAGE_ethtool-full=y
 CONFIG_PACKAGE_ip-full=y
 
-# LuCI & Tiếng Việt
+# Giao diện LuCI + Tiếng Việt + Theme
 CONFIG_PACKAGE_luci=y
 CONFIG_PACKAGE_luci-ssl=y
 CONFIG_PACKAGE_luci-i18n-base-vi=y
 CONFIG_PACKAGE_luci-theme-argon=y
-
-# Apps & monitoring
 CONFIG_PACKAGE_luci-app-nlbwmon=y
-CONFIG_PACKAGE_luci-app-samba4=y
-CONFIG_PACKAGE_luci-app-filebrowser=y
 CONFIG_PACKAGE_htop=y
-
-# VLAN profiles VN (VNPT/Viettel/FPT)
-CONFIG_PACKAGE_luci-app-vlanwizard=y
-CONFIG_PACKAGE_luci-profiles-vn=y
 EOF
 
-          # Chạy defconfig mà không fail nếu target bị xóa
-          make defconfig || (echo "❌ defconfig lỗi, build tiếp tục..." && true)
+          # defconfig
+          make defconfig || echo "❌ Lỗi defconfig, build vẫn tiếp tục"
 
       - name: Download packages
         run: |
           cd openwrt
           make download -j$(nproc) || make download -j1 V=s
 
-      - name: Compile firmware
+      - name: Compile Firmware
         run: |
           cd openwrt
           make -j$(nproc) IGNORE_ERRORS=m || make -j1 V=s
 
-      - name: Upload artifacts
+      - name: SHA256 Guard
+        id: sha_guard
+        run: |
+          cd openwrt/bin/targets/qualcommax/ipq807x
+          SYS=$(ls *sysupgrade.bin | head -n1)
+          INIT=$(ls *initramfs-kernel.bin | head -n1)
+          SHA_SYS=$(sha256sum "$SYS" | awk '{print $1}')
+          SHA_INIT=$(sha256sum "$INIT" | awk '{print $1}')
+          echo "SHA_SYS=$SHA_SYS" >> $GITHUB_ENV
+          echo "SHA_INIT=$SHA_INIT" >> $GITHUB_ENV
+          echo "$SHA_SYS  $SYS" > sha256sums
+          echo "$SHA_INIT  $INIT" >> sha256sums
+
+      - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Buffalo-WXR6000-GOD
+          name: Buffalo-WXR6000-NSS-${{ env.SHA_SYS }}
           path: |
             openwrt/bin/targets/qualcommax/ipq807x/*sysupgrade.bin
             openwrt/bin/targets/qualcommax/ipq807x/*initramfs-kernel.bin
