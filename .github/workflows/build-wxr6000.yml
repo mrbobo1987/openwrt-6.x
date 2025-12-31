@@ -1,7 +1,13 @@
-name: Build Buffalo WXR-6000AX12S / WXR-5950AX12 – NSS Auto Fallback
+name: Build Buffalo WXR-6000AX12S – NSS (Final Clean)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+      - release/*
+  schedule:
+    - cron: "0 2 * * 1-5"
 
 permissions:
   contents: write
@@ -41,8 +47,8 @@ jobs:
           path: |
             openwrt/dl
             openwrt/.ccache
-          key: buffalo-wxr6000-nss-autofallback-${{ runner.os }}-${{ github.run_id }}
-          restore-keys: buffalo-wxr6000-nss-autofallback-${{ runner.os }}-
+          key: buffalo-wxr6000-nss-final-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: buffalo-wxr6000-nss-final-${{ runner.os }}-
 
       - name: 5️⃣ Update feeds
         run: |
@@ -58,7 +64,7 @@ jobs:
           echo "CONFIG_TARGET_qualcommax=y" >> .config
           echo "CONFIG_TARGET_qualcommax_ipq807x=y" >> .config
 
-          # Tìm symbol WXR-6000AX12S
+          # Tìm WXR-6000AX12S
           REAL_ID=$(grep -RhoP 'DEVICE_buffalo_wxr[-_]6000ax12s' target/linux/qualcommax/image/ | head -n1)
           
           if [ -z "$REAL_ID" ]; then
@@ -71,8 +77,8 @@ jobs:
 
           echo "CONFIG_TARGET_qualcommax_ipq807x_${REAL_ID_SAFE}=y" >> .config
 
-          # Heredoc phải sát lề trái, KHÔNG thụt thêm
-cat >> .config <<'EOF'
+          # Thêm gói cơ bản & NSS
+          cat >> .config <<'EOF'
 CONFIG_TARGET_ROOTFS_SQUASHFS=y
 CONFIG_IMAGE_METADATA=y
 CONFIG_CCACHE=y
@@ -98,7 +104,7 @@ CONFIG_PACKAGE_luci-app-nlbwmon=y
 CONFIG_PACKAGE_htop=y
 EOF
 
-          make defconfig || true
+          make defconfig || (echo "⚠️ Defconfig warning ignored" && true)
 
       - name: 7️⃣ Download packages
         run: |
