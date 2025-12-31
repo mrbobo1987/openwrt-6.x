@@ -59,47 +59,45 @@ jobs:
           echo "CONFIG_TARGET_qualcommax_ipq807x=y" >> .config
 
           # Tìm WXR-6000AX12S
-          # grep -RhoP sẽ trả về chuỗi đầy đủ ví dụ: DEVICE_buffalo_wxr-6000ax12s
           REAL_ID=$(grep -RhoP 'DEVICE_buffalo_wxr[-_]6000ax12s' target/linux/qualcommax/image/ | head -n1)
           
           if [ -z "$REAL_ID" ]; then
              echo "⚠️ Không tìm thấy symbol WXR-6000AX12S, fallback sang WXR-5950AX12"
-             # SỬA LỖI: Thêm tiền tố DEVICE_buffalo_ và dùng dấu gạch dưới
+             # Đã thêm tiền tố DEVICE_buffalo_ cho đúng chuẩn
              REAL_ID_SAFE="DEVICE_buffalo_wxr_5950ax12"
           else
-             # Đổi dấu gạch ngang thành gạch dưới nếu tìm thấy
              REAL_ID_SAFE=$(echo "$REAL_ID" | tr '-' '_')
              echo "✅ Symbol được chọn: $REAL_ID_SAFE"
           fi
 
           echo "CONFIG_TARGET_qualcommax_ipq807x_${REAL_ID_SAFE}=y" >> .config
 
-          # Heredoc KHÔNG THỤT LỀ nội dung bên trong -> Chuẩn YAML
+          # FIX YAML SYNTAX: Thụt lề toàn bộ nội dung bên trong heredoc
           cat >> .config <<'EOF'
-CONFIG_TARGET_ROOTFS_SQUASHFS=y
-CONFIG_IMAGE_METADATA=y
-CONFIG_CCACHE=y
-CONFIG_PACKAGE_kmod-qca-nss-drv=y
-CONFIG_PACKAGE_kmod-qca-nss-ecm=y
-CONFIG_PACKAGE_kmod-qca-nss-crypto=y
-CONFIG_PACKAGE_kmod-qca-nss-cfi=y
-CONFIG_PACKAGE_nss-tools=y
-CONFIG_NSS_PPP_SUPPORT=y
-CONFIG_ECM_INTERFACE_PPP_ENABLE=y
-CONFIG_ECM_INTERFACE_VLAN_ENABLE=y
-CONFIG_PACKAGE_kmod-phy-aquantia=y
-CONFIG_PACKAGE_ath11k-firmware-ipq8074=y
-CONFIG_PACKAGE_ppp-mod-pppoe=y
-CONFIG_PACKAGE_kmod-8021q=y
-CONFIG_PACKAGE_ethtool-full=y
-CONFIG_PACKAGE_ip-full=y
-CONFIG_PACKAGE_luci=y
-CONFIG_PACKAGE_luci-ssl=y
-CONFIG_PACKAGE_luci-i18n-base-vi=y
-CONFIG_PACKAGE_luci-theme-argon=y
-CONFIG_PACKAGE_luci-app-nlbwmon=y
-CONFIG_PACKAGE_htop=y
-EOF
+          CONFIG_TARGET_ROOTFS_SQUASHFS=y
+          CONFIG_IMAGE_METADATA=y
+          CONFIG_CCACHE=y
+          CONFIG_PACKAGE_kmod-qca-nss-drv=y
+          CONFIG_PACKAGE_kmod-qca-nss-ecm=y
+          CONFIG_PACKAGE_kmod-qca-nss-crypto=y
+          CONFIG_PACKAGE_kmod-qca-nss-cfi=y
+          CONFIG_PACKAGE_nss-tools=y
+          CONFIG_NSS_PPP_SUPPORT=y
+          CONFIG_ECM_INTERFACE_PPP_ENABLE=y
+          CONFIG_ECM_INTERFACE_VLAN_ENABLE=y
+          CONFIG_PACKAGE_kmod-phy-aquantia=y
+          CONFIG_PACKAGE_ath11k-firmware-ipq8074=y
+          CONFIG_PACKAGE_ppp-mod-pppoe=y
+          CONFIG_PACKAGE_kmod-8021q=y
+          CONFIG_PACKAGE_ethtool-full=y
+          CONFIG_PACKAGE_ip-full=y
+          CONFIG_PACKAGE_luci=y
+          CONFIG_PACKAGE_luci-ssl=y
+          CONFIG_PACKAGE_luci-i18n-base-vi=y
+          CONFIG_PACKAGE_luci-theme-argon=y
+          CONFIG_PACKAGE_luci-app-nlbwmon=y
+          CONFIG_PACKAGE_htop=y
+          EOF
 
           make defconfig || (echo "⚠️ Defconfig warning ignored" && true)
 
