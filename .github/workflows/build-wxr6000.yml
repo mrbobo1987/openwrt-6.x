@@ -1,4 +1,4 @@
-name: Buffalo WXR-6000AX12S – NSS Build (FINAL VERSION)
+name: Build Buffalo WXR-6000AX12S – NSS (Final)
 
 on:
   workflow_dispatch:
@@ -21,11 +21,10 @@ jobs:
     timeout-minutes: 480
 
     steps:
-      # 1️⃣ Chuẩn bị hệ thống
-      - name: Checkout code
+      - name: 1️⃣ Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup build environment
+      - name: 2️⃣ Setup build environment
         run: |
           sudo apt update
           sudo apt install -y build-essential clang flex bison g++ gawk gcc-multilib \
@@ -33,11 +32,10 @@ jobs:
             rsync unzip wget zlib1g-dev file ccache xsltproc qemu-utils aria2 ca-certificates
           sudo timedatectl set-timezone Asia/Ho_Chi_Minh
 
-      # 2️⃣ Tải mã nguồn & khôi phục cache
-      - name: Clone LiBwrt NSS
+      - name: 3️⃣ Clone LiBwrt NSS
         run: git clone --depth 1 -b main-nss https://github.com/LiBwrt/openwrt-6.x openwrt
 
-      - name: Restore Cache
+      - name: 4️⃣ Restore Cache
         uses: actions/cache@v4
         with:
           path: |
@@ -46,24 +44,25 @@ jobs:
           key: buffalo-wxr6000-nss-final-${{ runner.os }}-${{ github.run_id }}
           restore-keys: buffalo-wxr6000-nss-final-${{ runner.os }}-
 
-      - name: Update Feeds
+      - name: 5️⃣ Update feeds
         run: |
           cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      # 3️⃣ Cấu hình thông minh + fallback nếu target không có
-      - name: Configure .config
+      - name: 6️⃣ Configure .config safely
         run: |
           cd openwrt
           rm -f .config
 
+          # Thiết lập Target cơ bản
           echo "CONFIG_TARGET_qualcommax=y" >> .config
           echo "CONFIG_TARGET_qualcommax_ipq807x=y" >> .config
 
+          # Tìm symbol WXR-6000AX12S
           REAL_ID=$(grep -RhoP 'DEVICE_buffalo_wxr[-_]6000ax12s' target/linux/qualcommax/ | head -n1)
           if [ -z "$REAL_ID" ]; then
-              echo "⚠️ Không tìm thấy symbol WXR-6000AX12S, fallback WXR-5950AX12"
+              echo "⚠️ Không tìm thấy symbol WXR-6000AX12S, sử dụng fallback WXR-5950AX12"
               REAL_ID_SAFE=wxr_5950ax12
           else
               REAL_ID_SAFE=$(echo "$REAL_ID" | tr '-' '_')
@@ -72,10 +71,8 @@ jobs:
 
           echo "CONFIG_TARGET_qualcommax_ipq807x_${REAL_ID_SAFE}=y" >> .config
 
-      # 4️⃣ Thêm các gói cơ bản + NSS + LuCI
-      - name: Append full .config
-        run: |
-          cat > openwrt/.config <<'EOF'
+          # Thêm các gói cơ bản và NSS (Heredoc không thụt lề)
+          cat >> .config <<EOF
 CONFIG_TARGET_ROOTFS_SQUASHFS=y
 CONFIG_IMAGE_METADATA=y
 CONFIG_CCACHE=y
@@ -107,26 +104,21 @@ CONFIG_PACKAGE_luci-app-nlbwmon=y
 CONFIG_PACKAGE_htop=y
 EOF
 
-      # 5️⃣ Chạy defconfig để chuẩn hóa
-      - name: Run defconfig
-        run: |
-          cd openwrt
+          # Chạy defconfig, không fail workflow nếu target bị xóa
           make defconfig || (echo "❌ LỖI: defconfig không thể loại bỏ target, build vẫn tiếp tục" && true)
 
-      # 6️⃣ Tải packages
-      - name: Download packages
+      - name: 7️⃣ Download packages
         run: |
           cd openwrt
           make download -j$(nproc) || make download -j1 V=s
 
-      # 7️⃣ Biên dịch firmware
-      - name: Compile Firmware
+      - name: 8️⃣ Compile Firmware
         run: |
           cd openwrt
           make -j$(nproc) IGNORE_ERRORS=m || make -j1 V=s
 
-      # 8️⃣ Tính SHA256 & xuất artifact
-      - name: SHA256 & Upload
+      - name: 9️⃣ SHA256 Guard
+        id: sha_guard
         run: |
           cd openwrt/bin/targets/qualcommax/ipq807x
           SYS=$(ls *sysupgrade.bin | head -n1)
@@ -138,7 +130,7 @@ EOF
           echo "$SHA_SYS  $SYS" > sha256sums
           echo "$SHA_INIT  $INIT" >> sha256sums
 
-      - name: Upload artifacts
+      - name: 🔟 Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Buffalo-WXR6000-NSS-${{ env.SHA_SYS }}
