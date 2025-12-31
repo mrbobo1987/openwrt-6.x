@@ -1,4 +1,4 @@
-name: Build Buffalo WXR-6000AX12S (Safe Mode - No Heredoc)
+name: Build Buffalo WXR-6000AX12S (Final Fix Indent)
 
 on:
   workflow_dispatch:
@@ -42,7 +42,7 @@ jobs:
             openwrt/dl
             openwrt/.ccache
           key: buffalo-wxr6000-safe-${{ runner.os }}-${{ github.run_id }}
-            restore-keys: buffalo-wxr6000-safe-${{ runner.os }}-
+          restore-keys: buffalo-wxr6000-safe-${{ runner.os }}-
 
       - name: 5. Update feeds
         run: |
@@ -60,10 +60,8 @@ jobs:
           echo "CONFIG_TARGET_qualcommax_ipq807x=y" >> .config
 
           # --- 2. Tim ID thiet bi (Logic Don Gian) ---
-          # Tim bat ky ID nao chua chuoi 6000ax12s
           DETECTED_ID=$(grep -RhoP 'DEVICE_buffalo_wxr[-_]6000ax12s' target/linux/qualcommax/image/ | head -n1)
           
-          # Neu khong tim thay thi Fallback sang 5950ax12
           if [ -z "$DETECTED_ID" ]; then
             echo "⚠️ Khong tim thay WXR-6000AX12S, dung WXR-5950AX12 thay the."
             DETECTED_ID="DEVICE_buffalo_wxr_5950ax12"
@@ -75,7 +73,7 @@ jobs:
 
           echo "CONFIG_TARGET_qualcommax_ipq807x_${FINAL_ID}=y" >> .config
 
-          # --- 3. Ghi Config bang lenh ECHO (Khong bao gio loi syntax) ---
+          # --- 3. Ghi Config bang lenh ECHO (An toan tuyet doi) ---
           echo "CONFIG_TARGET_ROOTFS_SQUASHFS=y" >> .config
           echo "CONFIG_IMAGE_METADATA=y" >> .config
           echo "CONFIG_CCACHE=y" >> .config
