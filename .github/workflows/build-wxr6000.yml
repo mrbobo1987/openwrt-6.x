@@ -1,4 +1,4 @@
-name: Build Buffalo WXR-6000AX12S – NSS (Safe Full)
+name: Build Buffalo WXR-6000AX12S (Safe Mode)
 
 on:
   workflow_dispatch:
@@ -18,15 +18,13 @@ env:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 360
+    timeout-minutes: 480
 
     steps:
-      # 1️⃣ Checkout
-      - name: Checkout repository
+      - name: 1. Checkout code
         uses: actions/checkout@v4
 
-      # 2️⃣ Setup Environment
-      - name: Install build dependencies
+      - name: 2. Setup build environment
         run: |
           sudo apt update
           sudo apt install -y build-essential clang flex bison g++ gawk gcc-multilib \
@@ -34,56 +32,50 @@ jobs:
             rsync unzip wget zlib1g-dev file ccache xsltproc qemu-utils aria2 ca-certificates
           sudo timedatectl set-timezone Asia/Ho_Chi_Minh
 
-      # 3️⃣ Clone Source
-      - name: Clone LiBwrt OpenWrt NSS
+      - name: 3. Clone LiBwrt NSS
         run: git clone --depth 1 -b main-nss https://github.com/LiBwrt/openwrt-6.x openwrt
 
-      # 4️⃣ Restore Cache
-      - name: Restore Cache
+      - name: 4. Restore Cache
         uses: actions/cache@v4
         with:
           path: |
             openwrt/dl
             openwrt/.ccache
-          key: buffalo-wxr6000-nss-safe-${{ runner.os }}-${{ github.run_id }}
-          restore-keys: buffalo-wxr6000-nss-safe-${{ runner.os }}-
+          key: buffalo-wxr6000-safe-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: buffalo-wxr6000-safe-${{ runner.os }}-
 
-      # 5️⃣ Update feeds
-      - name: Update and install feeds
+      - name: 5. Update feeds
         run: |
           cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      # 6️⃣ Configure Target & Auto Fallback
-      - name: Configure .config safely
+      - name: 6. Configure .config (BRUTE FORCE ECHO)
         run: |
           cd openwrt
           rm -f .config
+          
+          # --- LOGIC TIM ID (Viet don gian nhat co the) ---
+          DETECTED_ID=$(grep -RhoP 'DEVICE_buffalo_wxr[-_]6000ax12s' target/linux/qualcommax/image/ | head -n1)
+          
+          # Neu khong tim thay thi gan mac dinh la 5950ax12
+          if [ -z "$DETECTED_ID" ]; then
+            DETECTED_ID="DEVICE_buffalo_wxr_5950ax12"
+          fi
+          
+          # Chuan hoa ID (doi dau - thanh dau _)
+          FINAL_ID=$(echo "$DETECTED_ID" | tr '-' '_')
+          echo "Build Target Selected: $FINAL_ID"
 
-          # Base Target
+          # --- GHI CONFIG BANG ECHO (KHONG DUNG HEREDOC) ---
           echo "CONFIG_TARGET_qualcommax=y" >> .config
           echo "CONFIG_TARGET_qualcommax_ipq807x=y" >> .config
-
-          # Detect symbol
-          REAL_ID=$(grep -RhoP 'DEVICE_buffalo_wxr[-_]6000ax12s' target/linux/qualcommax/image/ | head -n1)
-          if [ -z "$REAL_ID" ]; then
-            echo "⚠️ Symbol WXR-6000AX12S not found, fallback to WXR-5950AX12"
-            REAL_ID_SAFE="DEVICE_buffalo_wxr_5950ax12"
-          else
-            REAL_ID_SAFE=$(echo "$REAL_ID" | tr '-' '_')
-            echo "✅ Symbol detected: $REAL_ID_SAFE"
-          fi
-
-          echo "CONFIG_TARGET_qualcommax_ipq807x_${REAL_ID_SAFE}=y" >> .config
-
-      # 7️⃣ Add core packages in separate step
-      - name: Add core packages
-        run: |
-          cd openwrt
+          echo "CONFIG_TARGET_qualcommax_ipq807x_${FINAL_ID}=y" >> .config
           echo "CONFIG_TARGET_ROOTFS_SQUASHFS=y" >> .config
           echo "CONFIG_IMAGE_METADATA=y" >> .config
           echo "CONFIG_CCACHE=y" >> .config
+          
+          # NSS PACKAGES
           echo "CONFIG_PACKAGE_kmod-qca-nss-drv=y" >> .config
           echo "CONFIG_PACKAGE_kmod-qca-nss-ecm=y" >> .config
           echo "CONFIG_PACKAGE_kmod-qca-nss-crypto=y" >> .config
@@ -92,12 +84,16 @@ jobs:
           echo "CONFIG_NSS_PPP_SUPPORT=y" >> .config
           echo "CONFIG_ECM_INTERFACE_PPP_ENABLE=y" >> .config
           echo "CONFIG_ECM_INTERFACE_VLAN_ENABLE=y" >> .config
+          
+          # NETWORK & DRIVERS
           echo "CONFIG_PACKAGE_kmod-phy-aquantia=y" >> .config
           echo "CONFIG_PACKAGE_ath11k-firmware-ipq8074=y" >> .config
           echo "CONFIG_PACKAGE_ppp-mod-pppoe=y" >> .config
           echo "CONFIG_PACKAGE_kmod-8021q=y" >> .config
           echo "CONFIG_PACKAGE_ethtool-full=y" >> .config
           echo "CONFIG_PACKAGE_ip-full=y" >> .config
+          
+          # LUCI & THEME
           echo "CONFIG_PACKAGE_luci=y" >> .config
           echo "CONFIG_PACKAGE_luci-ssl=y" >> .config
           echo "CONFIG_PACKAGE_luci-i18n-base-vi=y" >> .config
@@ -105,22 +101,20 @@ jobs:
           echo "CONFIG_PACKAGE_luci-app-nlbwmon=y" >> .config
           echo "CONFIG_PACKAGE_htop=y" >> .config
 
+          # CHOT CAU HINH
           make defconfig || true
 
-      # 8️⃣ Download Packages
-      - name: Download packages
+      - name: 7. Download packages
         run: |
           cd openwrt
           make download -j$(nproc) || make download -j1 V=s
 
-      # 9️⃣ Compile Firmware
-      - name: Compile firmware
+      - name: 8. Compile Firmware
         run: |
           cd openwrt
           make -j$(nproc) IGNORE_ERRORS=m || make -j1 V=s
 
-      # 🔟 SHA256 checksum
-      - name: SHA256 Guard
+      - name: 9. SHA256 Guard
         id: sha_guard
         run: |
           cd openwrt/bin/targets/qualcommax/ipq807x
@@ -133,11 +127,10 @@ jobs:
           echo "$SHA_SYS  $SYS" > sha256sums
           echo "$SHA_INIT  $INIT" >> sha256sums
 
-      # 1️⃣1️⃣ Upload artifacts
-      - name: Upload artifacts
+      - name: 10. Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Buffalo-WXR6000-NSS-Safe-${{ env.SHA_SYS }}
+          name: Buffalo-WXR6000-NSS-${{ env.SHA_SYS }}
           path: |
             openwrt/bin/targets/qualcommax/ipq807x/*sysupgrade.bin
             openwrt/bin/targets/qualcommax/ipq807x/*initramfs-kernel.bin
