@@ -1,26 +1,35 @@
-name: Buffalo 6000AX12S - Final Qosmio Optimized
+name: Buffalo WXR-5950AX12 (6000AX12S) – Fixed Perfect Fusion
+
 on:
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-22.04
+    timeout-minutes: 480
+
     steps:
       - uses: actions/checkout@v4
 
+      # ============================================================
+      # 1. BUILD ENV
+      # ============================================================
       - name: Setup Environment
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
           sudo apt update
-          sudo apt install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev python3-distutils rsync unzip zlib1g-dev file wget
+          sudo apt install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev python3-distutils rsync unzip zlib1g-dev file wget time
 
+      # ============================================================
+      # 2. SOURCE + FEEDS
+      # ============================================================
       - name: Clone Source
         run: git clone -b main-nss --single-branch https://github.com/qosmio/openwrt-ipq.git openwrt
 
       - name: Feeds Setup
         run: |
           cd openwrt
-          cat > feeds.conf.default <<EOF
+          cat > feeds.conf.default <<'EOF'
           src-git packages https://git.openwrt.org/feed/packages.git;master
           src-git luci https://git.openwrt.org/project/luci.git;master
           src-git routing https://git.openwrt.org/feed/routing.git;master
@@ -28,41 +37,109 @@ jobs:
           src-git nss_packages https://github.com/qosmio/nss-packages.git;NSS-12.5-K6.x
           src-git sqm_scripts_nss https://github.com/qosmio/sqm-scripts-nss.git
           EOF
-          ./scripts/feeds update -a && ./scripts/feeds install -a
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
-      - name: Configuration
+      # ============================================================
+      # 3. RUNTIME TUNING (FILES OVERLAY METHOD - SMART CHOICE)
+      # ============================================================
+      - name: Add PPPoE 10G Runtime Tuning
+        run: |
+          cd openwrt
+          mkdir -p files/etc/{sysctl.d,init.d,hotplug.d/iface}
+          mkdir -p files/usr/bin
+
+          # --- SYSCTL 10G OPTIMIZATION ---
+          cat > files/etc/sysctl.d/99-pppoe10g.conf <<'EOF'
+          net.core.netdev_max_backlog=500000
+          net.core.rmem_max=134217728
+          net.core.wmem_max=134217728
+          net.ipv4.tcp_fastopen=3
+          net.ipv4.tcp_mtu_probing=1
+          net.netfilter.nf_conntrack_max=1048576
+          EOF
+
+          # --- SCRIPT APPLY RPS/XPS (ALL CORES) ---
+          cat > files/usr/bin/pppoe10g-apply <<'EOF'
+          #!/bin/sh
+          # Apply Sysctl
+          sysctl -p /etc/sysctl.d/99-pppoe10g.conf >/dev/null 2>&1
+          
+          # Distribute Load to ALL CPUs (f = 1111 binary = 4 cores)
+          for q in /sys/class/net/eth*/queues/rx-*/rps_cpus; do
+            echo f > $q 2>/dev/null
+          done
+          for q in /sys/class/net/eth*/queues/tx-*/xps_cpus; do
+            echo f > $q 2>/dev/null
+          done
+          exit 0
+          EOF
+          chmod +x files/usr/bin/pppoe10g-apply
+
+          # --- AUTO START ON BOOT ---
+          cat > files/etc/init.d/pppoe10g <<'EOF'
+          #!/bin/sh /etc/rc.common
+          START=99
+          start() {
+            /usr/bin/pppoe10g-apply
+          }
+          EOF
+          chmod +x files/etc/init.d/pppoe10g
+
+          # --- WATCHDOG FOR WAN INTERFACE ---
+          cat > files/etc/hotplug.d/iface/99-pppoe10g <<'EOF'
+          [ "$ACTION" = "ifup" ] && [ "$INTERFACE" = "wan" ] && {
+            sleep 5
+            /usr/bin/pppoe10g-apply
+          }
+          EOF
+
+      # ============================================================
+      # 4. CONFIGURATION (FIXED DEVICE NAME & SQM ADDED)
+      # ============================================================
+      - name: Configure Firmware
         run: |
           cd openwrt
           cp nss-setup/config-nss.seed .config
-          
-          # Thiet lap muc tieu phan cung
+
+          # [FIXED] Correct Target Name (Hyphen not Underscore)
           echo "CONFIG_TARGET_qualcommax=y" >> .config
           echo "CONFIG_TARGET_qualcommax_ipq807x=y" >> .config
           echo "CONFIG_TARGET_qualcommax_ipq807x_DEVICE_buffalo_wxr-5950ax12=y" >> .config
-          
-          # Driver 10G va Firmware Aquantia
+
+          # --- 10G Drivers ---
           echo "CONFIG_PACKAGE_kmod-phy-aquantia=y" >> .config
           echo "CONFIG_PACKAGE_aquantia-firmware-aqr113c=y" >> .config
-          
-          # WiFi va He thong
-          echo "CONFIG_PACKAGE_ath11k-firmware-ipq8074=y" >> .config
-          echo "CONFIG_PACKAGE_wpad-openssl=y" >> .config
-          echo "CONFIG_PACKAGE_irqbalance=y" >> .config
+
+          # --- NSS Core ---
+          echo "CONFIG_PACKAGE_kmod-qca-nss-drv-pppoe=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-qca-nss-ecm=y" >> .config
+          echo "CONFIG_PACKAGE_nssinfo=y" >> .config
+
+          # --- Network Stack ---
+          echo "CONFIG_PACKAGE_ppp=y" >> .config
+          echo "CONFIG_PACKAGE_ppp-mod-pppoe=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-8021q=y" >> .config
           echo "CONFIG_PACKAGE_kmod-tcp-bbr=y" >> .config
-          
-          # Giao dien Luci va Tieng Viet
+          echo "CONFIG_DEFAULT_tcp_bbr=y" >> .config
+          echo "CONFIG_PACKAGE_irqbalance=y" >> .config
+
+          # --- [ADDED] SQM NSS (Don't forget this!) ---
+          echo "CONFIG_PACKAGE_sqm-scripts-nss=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-sqm=y" >> .config
+
+          # --- GUI ---
           echo "CONFIG_PACKAGE_luci=y" >> .config
           echo "CONFIG_PACKAGE_luci-ssl=y" >> .config
           echo "CONFIG_PACKAGE_luci-i18n-base-vi=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-cpufreq=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-ttyd=y" >> .config
-          
-          # Thong ke va Nhiet do
           echo "CONFIG_PACKAGE_luci-app-statistics=y" >> .config
-          echo "CONFIG_PACKAGE_collectd-mod-thermal=y" >> .config
           echo "CONFIG_PACKAGE_luci-i18n-statistics-vi=y" >> .config
+          
+          # --- USB Support (Optional - I added just in case) ---
+          echo "CONFIG_PACKAGE_kmod-usb3=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-usb-dwc3-qcom=y" >> .config
 
-          # Toi uu hoa NSS (Tat cac bo loc gay xung dot)
+          # --- Cleanup Conflicts ---
           echo "# CONFIG_PACKAGE_kmod-ipt-offload is not set" >> .config
           echo "# CONFIG_PACKAGE_kmod-nft-offload is not set" >> .config
           echo "# CONFIG_PACKAGE_kmod-shortcut-fe is not set" >> .config
@@ -70,14 +147,20 @@ jobs:
           
           make defconfig
 
-      - name: Download and Build
+      # ============================================================
+      # 5. BUILD
+      # ============================================================
+      - name: Download & Build
         run: |
           cd openwrt
           make download -j$(nproc)
           make -j$(nproc) || make -j1 V=s
 
-      - name: Upload Artifact
+      # ============================================================
+      # 6. UPLOAD
+      # ============================================================
+      - name: Upload Firmware
         uses: actions/upload-artifact@v4
         with:
-          name: Buffalo-6000AX12S-Final-Firmware
+          name: WXR-5950AX12-PerfectFusion
           path: openwrt/bin/targets/qualcommax/ipq807x/*sysupgrade.bin
