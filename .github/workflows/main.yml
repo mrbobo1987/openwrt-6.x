@@ -35,34 +35,49 @@ jobs:
           cd openwrt
           cp nss-setup/config-nss.seed .config
           
-          # Thiết lập mục tiêu phần cứng
+          # Thiet lap muc tieu phan cung
           echo "CONFIG_TARGET_qualcommax=y" >> .config
           echo "CONFIG_TARGET_qualcommax_ipq807x=y" >> .config
           echo "CONFIG_TARGET_qualcommax_ipq807x_DEVICE_buffalo_wxr-5950ax12=y" >> .config
           
-          # Driver 10G và Firmware Aquantia (Cực kỳ quan trọng cho 6000AX12S)
+          # Driver 10G va Firmware Aquantia
           echo "CONFIG_PACKAGE_kmod-phy-aquantia=y" >> .config
           echo "CONFIG_PACKAGE_aquantia-firmware-aqr113c=y" >> .config
           
-          # WiFi và Hệ thống
+          # WiFi va He thong
           echo "CONFIG_PACKAGE_ath11k-firmware-ipq8074=y" >> .config
           echo "CONFIG_PACKAGE_wpad-openssl=y" >> .config
           echo "CONFIG_PACKAGE_irqbalance=y" >> .config
           echo "CONFIG_PACKAGE_kmod-tcp-bbr=y" >> .config
           
-          # Giao diện Luci và Tiếng Việt
+          # Giao dien Luci va Tieng Viet
           echo "CONFIG_PACKAGE_luci=y" >> .config
           echo "CONFIG_PACKAGE_luci-ssl=y" >> .config
           echo "CONFIG_PACKAGE_luci-i18n-base-vi=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-cpufreq=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-ttyd=y" >> .config
           
-          # Thống kê và Nhiệt độ (Để theo dõi router)
+          # Thong ke va Nhiet do
           echo "CONFIG_PACKAGE_luci-app-statistics=y" >> .config
           echo "CONFIG_PACKAGE_collectd-mod-thermal=y" >> .config
           echo "CONFIG_PACKAGE_luci-i18n-statistics-vi=y" >> .config
 
-          # Tối ưu hóa NSS (Tắt các bộ lọc gây xung đột)
+          # Toi uu hoa NSS (Tat cac bo loc gay xung dot)
           echo "# CONFIG_PACKAGE_kmod-ipt-offload is not set" >> .config
           echo "# CONFIG_PACKAGE_kmod-nft-offload is not set" >> .config
-          echo "# CONFIG_PACKAGE_kmod-shortcut-fe is not set
+          echo "# CONFIG_PACKAGE_kmod-shortcut-fe is not set" >> .config
+          echo "# CONFIG_PACKAGE_luci-app-turboacc is not set" >> .config
+          
+          make defconfig
+
+      - name: Download and Build
+        run: |
+          cd openwrt
+          make download -j$(nproc)
+          make -j$(nproc) || make -j1 V=s
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Buffalo-6000AX12S-Final-Firmware
+          path: openwrt/bin/targets/qualcommax/ipq807x/*sysupgrade.bin
